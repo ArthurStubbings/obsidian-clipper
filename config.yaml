@@ -1,0 +1,9 @@
+# Obsidian Clipper configuration
+# Set vault.path to your Obsidian vault's absolute path.
+# You can use ~ for your home directory.
+# Find your vault at: ~/Library/Mobile\ Documents/iCloud~md~obsidian/Documents/
+
+vault:
+  # Replace YOUR_VAULT_NAME with your actual vault folder name
+  path: ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/YOUR_VAULT_NAME
+  subfolder: Sources
