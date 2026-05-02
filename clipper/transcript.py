@@ -6,6 +6,7 @@ import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
@@ -65,9 +66,11 @@ def _reel_transcript(url: str) -> TranscriptResult:
     with tempfile.TemporaryDirectory() as tmp:
         audio_path = os.path.join(tmp, "audio.%(ext)s")
         logger.info("Downloading Reel audio via yt-dlp…")
+        venv_bin = Path(__file__).parent.parent / "venv" / "bin"
+        yt_dlp = str(venv_bin / "yt-dlp")
         result = subprocess.run(
             [
-                "yt-dlp",
+                yt_dlp,
                 "--extract-audio",
                 "--audio-format", "mp3",
                 "--audio-quality", "0",
