@@ -14,7 +14,7 @@ class Platform(Enum):
 _YOUTUBE_RE = re.compile(
     r"(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)([A-Za-z0-9_-]{11})"
 )
-_INSTAGRAM_REEL_RE = re.compile(r"instagram\.com/(?:reel|reels)/([A-Za-z0-9_-]+)")
+_INSTAGRAM_REEL_RE = re.compile(r"instagram\.com/(?:reel|reels|p)/([A-Za-z0-9_-]+)")
 
 _APPLESCRIPT = """\
 tell application "Safari"
