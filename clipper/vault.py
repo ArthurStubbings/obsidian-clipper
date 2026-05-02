@@ -25,6 +25,25 @@ def write_note(note: str, filename: str, vault_path: str, subfolder: str = "Sour
     return dest
 
 
+def get_existing_titles(vault_path: str, subfolder: str = "Sources") -> list[str]:
+    """Return the title frontmatter value from every .md file in the vault subfolder."""
+    import glob
+    import re
+    vault = resolve_vault_path(vault_path)
+    title_re = re.compile(r"^title:\s*(.+)$", re.MULTILINE)
+    titles = []
+    search_dir = vault / subfolder
+    for path in glob.glob(str(search_dir / "*.md")):
+        try:
+            text = Path(path).read_text(encoding="utf-8", errors="ignore")
+            m = title_re.search(text)
+            if m:
+                titles.append(m.group(1).strip().strip('"').strip("'"))
+        except OSError:
+            continue
+    return sorted(titles)
+
+
 def send_notification(title: str, message: str) -> None:
     """Show a macOS notification using osascript."""
     script = (

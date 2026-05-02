@@ -23,7 +23,22 @@ Rules:
 - Output ONLY the raw markdown — no preamble, no explanation, no code fences
 """
 
-_USER_PROMPT = """\
+_CLASSIFY_PROMPT = """\
+Classify this video transcript into exactly one of three types:
+
+- reference: a structured list of N items, concepts, tips, steps, mistakes, rules, or tools
+- tutorial: a how-to walkthrough focused on building or doing one specific thing
+- essay: a talk, interview, or explanation built around a central argument or narrative
+
+Respond with a single word: reference, tutorial, or essay.
+
+TRANSCRIPT (first 1500 chars):
+{transcript}
+"""
+
+# --- Prompt templates per video type ---
+
+_ESSAY_PROMPT = """\
 Convert the following video transcript into an Obsidian markdown note.
 
 URL: {url}
@@ -71,26 +86,167 @@ status: inbox
 [View original]({url})
 """
 
+_TUTORIAL_PROMPT = """\
+Convert the following tutorial transcript into an Obsidian markdown note.
 
-def generate_note(url: str, platform: Platform, transcript: str, date: str) -> str:
-    """Send transcript to Claude and return the formatted markdown note."""
+Important: tutorials often use a demo project as a vehicle. Your job is to capture the \
+SKILL or TOOL being taught — not the demo. If someone built a game to teach Claude Code, \
+the note is about Claude Code, not the game.
+
+URL: {url}
+Platform: {platform}
+
+TRANSCRIPT:
+{transcript}
+
+Output the note using EXACTLY this structure:
+
+---
+title: <descriptive title — the skill or tool being taught, not the demo project>
+source: {url}
+platform: {platform}
+creator: <channel name or author if detectable, otherwise "Unknown">
+date_saved: {date}
+duration: <estimated duration in minutes based on transcript length, format: "X min">
+tags: [tag1, tag2, tag3, tag4]
+status: inbox
+---
+
+## What you learn
+<1–2 sentences on the skill or capability this tutorial gives you>
+
+## Steps
+1. <concise step — focus on the transferable process, not demo-specific details>
+2. <concise step>
+3. <concise step>
+(continue for all major steps — be specific, include commands or values where mentioned)
+
+## Key gotchas
+- <non-obvious thing that could trip you up>
+- <non-obvious thing that could trip you up (if any)>
+
+## Actions
+- [ ] <specific next step to apply this skill>
+- [ ] <specific next step to apply this skill>
+- [ ] <specific next step to apply this skill (if warranted)>
+
+## Related notes
+- [[<suggested Obsidian note title>]]
+- [[<suggested Obsidian note title>]]
+
+## Source
+[View original]({url})
+"""
+
+_REFERENCE_PROMPT = """\
+Convert the following reference/list video transcript into an Obsidian markdown note.
+
+URL: {url}
+Platform: {platform}
+
+TRANSCRIPT:
+{transcript}
+
+Output the note using EXACTLY this structure:
+
+---
+title: <descriptive title — what the list is>
+source: {url}
+platform: {platform}
+creator: <channel name or author if detectable, otherwise "Unknown">
+date_saved: {date}
+duration: <estimated duration in minutes based on transcript length, format: "X min">
+tags: [tag1, tag2, tag3, tag4]
+status: inbox
+---
+
+## Overview
+<1–2 sentences on what this list covers and why it matters>
+
+## Items
+List EVERY item covered in the video. For each one:
+
+### <Item name or number — title>
+<1–2 sentences explaining what it is and why it matters>
+
+## Top picks
+- **<item>** — <one sentence on why this one stands out>
+- **<item>** — <one sentence on why this one stands out>
+- **<item>** — <one sentence on why this one stands out>
+
+## Actions
+- [ ] <specific next step based on the most relevant item>
+- [ ] <specific next step based on the most relevant item>
+- [ ] <specific next step based on the most relevant item (if warranted)>
+
+## Related notes
+- [[<suggested Obsidian note title>]]
+- [[<suggested Obsidian note title>]]
+
+## Source
+[View original]({url})
+"""
+
+_PROMPTS = {
+    "essay": _ESSAY_PROMPT,
+    "tutorial": _TUTORIAL_PROMPT,
+    "reference": _REFERENCE_PROMPT,
+}
+
+
+def _classify(client: anthropic.Anthropic, transcript: str) -> str:
+    """Return 'reference', 'tutorial', or 'essay'."""
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=10,
+        messages=[{
+            "role": "user",
+            "content": _CLASSIFY_PROMPT.format(transcript=transcript[:1500]),
+        }],
+    )
+    label = response.content[0].text.strip().lower()
+    if label not in _PROMPTS:
+        logger.warning("Unexpected classification '%s', falling back to essay", label)
+        return "essay"
+    return label
+
+
+def generate_note(
+    url: str,
+    platform: Platform,
+    transcript: str,
+    date: str,
+    existing_titles: list[str] | None = None,
+) -> str:
+    """Classify the transcript, then generate a format-appropriate Obsidian note."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set in the environment.")
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    prompt = _USER_PROMPT.format(
+    logger.info("Classifying video type…")
+    video_type = _classify(client, transcript)
+    logger.info("Video type: %s", video_type)
+
+    existing_block = ""
+    if existing_titles:
+        titles_list = "\n".join(f"- {t}" for t in existing_titles)
+        existing_block = (
+            f"\n\nEXISTING VAULT NOTES (only suggest [[wikilinks]] to notes from this list):\n{titles_list}"
+        )
+
+    prompt = _PROMPTS[video_type].format(
         url=url,
         platform=platform.value,
         transcript=transcript,
         date=date,
-    )
+    ) + existing_block
 
-    logger.info("Sending transcript to Claude (%s)…", MODEL)
+    logger.info("Generating note with Claude (%s)…", MODEL)
     message = client.messages.create(
         model=MODEL,
-        max_tokens=2048,
+        max_tokens=4096,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )

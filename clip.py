@@ -21,7 +21,7 @@ from clipper.claude import generate_note
 from clipper.formatter import build_filename
 from clipper.safari import Platform, detect_platform, get_safari_url
 from clipper.transcript import get_transcript
-from clipper.vault import send_notification, write_note
+from clipper.vault import get_existing_titles, send_notification, write_note
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,8 +53,12 @@ def clip(url: str, config: dict) -> None:
     )
 
     today = date.today().isoformat()
-    logger.info("Generating note with Claude…")
-    note = generate_note(url, platform, transcript_result.text, today)
+    existing_titles = get_existing_titles(
+        config["vault"]["path"],
+        subfolder=config["vault"].get("subfolder", "Sources"),
+    )
+    logger.info("Found %d existing notes in vault", len(existing_titles))
+    note = generate_note(url, platform, transcript_result.text, today, existing_titles)
 
     filename = build_filename(note, today)
     dest = write_note(

@@ -7,7 +7,8 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 
 from clipper.safari import Platform
 
@@ -41,16 +42,10 @@ def _youtube_transcript(url: str) -> TranscriptResult:
 
     logger.info("Fetching YouTube transcript for video ID: %s", video_id)
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        # Prefer manually-created English transcripts; fall back to auto-generated
-        try:
-            transcript = transcript_list.find_manually_created_transcript(["en", "en-US", "en-GB"])
-        except NoTranscriptFound:
-            transcript = transcript_list.find_generated_transcript(["en", "en-US", "en-GB"])
-
-        segments = transcript.fetch()
-        text = " ".join(seg["text"] for seg in segments)
-        return TranscriptResult(text=text, language=transcript.language_code, method="youtube_api")
+        api = YouTubeTranscriptApi()
+        fetched = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
+        text = " ".join(seg.text for seg in fetched)
+        return TranscriptResult(text=text, language="en", method="youtube_api")
 
     except TranscriptsDisabled:
         raise RuntimeError("Transcripts are disabled for this video.")
