@@ -1,116 +1,98 @@
 # Obsidian Clipper
 
-Clip YouTube videos (and Instagram Reels) into structured Obsidian markdown notes with one keyboard shortcut.
+Clip YouTube videos and Instagram Reels into structured Obsidian markdown notes with one keyboard shortcut.
 
 - Grabs the current Safari URL via AppleScript
 - Fetches the full transcript (YouTube API or Whisper for Reels)
+- Classifies the video (reference, tutorial, essay) and picks the right note format
 - Sends it to Claude to generate a concise, opinionated note
+- Cross-links to existing notes already in your vault
 - Writes the `.md` file directly into your Obsidian vault
 - Shows a macOS notification on success
 
-The whole pipeline runs in under 10 seconds for most YouTube videos.
+YouTube runs in under 10 seconds. Instagram Reels take 30–60 seconds (local Whisper transcription) and notify you when done.
 
-## Generated note format
+## Note formats
 
-```markdown
----
-title: How to Build a Sustainable Morning Routine
-source: https://youtube.com/watch?v=...
-platform: YouTube
-creator: Channel Name
-date_saved: 2026-04-28
-duration: 12 min
-tags: [habit-design, morning-routine, productivity, behaviour-change]
-status: inbox
----
+The tool detects the video type and generates a format-appropriate note:
 
-## Summary
-- ...
+**Reference** (list of N things) — enumerates every item with its own section, plus top picks  
+**Tutorial** — captures the skill being taught, not the demo project; numbered steps + gotchas  
+**Essay** — summary bullets, key idea, and actions
 
-## Key idea
-...
-
-## Actions
-- [ ] ...
-
-## Related notes
-- [[Habit Formation]]
-
-## Source
-[View original](https://youtube.com/watch?v=...)
-```
+Every note includes YAML frontmatter compatible with Obsidian Dataview, and Related notes links are chosen from notes that already exist in your vault.
 
 ## Requirements
 
 - macOS (AppleScript + notification support)
 - Safari as primary browser
 - Python 3.11+
+- [ffmpeg](https://ffmpeg.org/) — required for Instagram Reels (`brew install ffmpeg`)
 - Anthropic API key
 
 ## Setup
 
 ```bash
-git clone https://github.com/your-username/obsidian-clipper
+git clone https://github.com/ArthurStubbings/obsidian-clipper
 cd obsidian-clipper
 bash setup.sh
 ```
 
 Then:
 
-1. Edit `.env` and set `ANTHROPIC_API_KEY=sk-ant-...`
-2. Edit `config.yaml` and set `vault.path` to your Obsidian vault folder
+1. Edit `.env` and set your API key:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+2. Edit `config.yaml` and set your vault path:
+   ```yaml
+   vault:
+     path: ~/Documents/Obsidian/YourVaultName
+     subfolder: Sources
+   ```
+   Find your vault name at: `~/Library/Mobile\ Documents/iCloud~md~obsidian/Documents/`
 
-## Usage
+## Test it
 
 ```bash
 source venv/bin/activate
-
-# Clip the current Safari tab
-python clip.py
-
-# Clip an explicit URL (useful for testing)
-python clip.py https://www.youtube.com/watch?v=dQw4w9WgXcQ
-
-# Verbose output
-python clip.py --debug
+python clip.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ```
-
-## Keyboard shortcut (macOS Automator)
-
-1. Open **Automator** → New Document → **Quick Action**
-2. Set "Workflow receives" to **no input** in **any application**
-3. Add a **Run Shell Script** action:
-   ```bash
-   cd /path/to/obsidian-clipper
-   source venv/bin/activate
-   python clip.py
-   ```
-4. Save as `Obsidian Clipper`
-5. Go to **System Settings → Keyboard → Keyboard Shortcuts → Services** and assign `⌘⇧O`
 
 ## Keyboard shortcut (Raycast)
 
-Create a Script Command pointing to:
-```bash
-#!/usr/bin/env bash
-cd /path/to/obsidian-clipper
-source venv/bin/activate
-python clip.py
-```
+1. In Raycast go to **Extensions → Script Commands → Add Directories** and point it at the `obsidian-clipper` folder — Raycast will pick up `raycast-clip.sh` automatically
+2. Find `Obsidian Clipper` in Raycast, click the hotkey field, and assign `⌘⇧O`
 
-## Instagram Reels support
+Raycast returns instantly for both YouTube and Reels. For Reels, a macOS notification appears when the note is saved. If something goes wrong, check `/tmp/obsidian-clipper.log`.
 
-Reels transcription uses `yt-dlp` + `openai-whisper` and runs locally — no extra API keys needed. It's slower than YouTube (30–60 s depending on video length and your machine). yt-dlp may require cookies for some Reels; see [yt-dlp docs](https://github.com/yt-dlp/yt-dlp#usage) for details.
+## Keyboard shortcut (Automator)
+
+1. Open **Automator** → New Document → **Quick Action**
+2. Set "Workflow receives" to **no input** in **any application**
+3. Add a **Run Shell Script** action with Shell set to `/bin/zsh`:
+   ```bash
+   nohup /path/to/obsidian-clipper/venv/bin/python /path/to/obsidian-clipper/clip.py > /tmp/obsidian-clipper.log 2>&1 &
+   ```
+4. Save as `Obsidian Clipper`
+5. Go to **System Settings → Keyboard → Keyboard Shortcuts → Services** → find `Obsidian Clipper` → assign `⌘⇧O`
+
+## Supported URLs
+
+| Platform | URL formats |
+|---|---|
+| YouTube | `youtube.com/watch?v=...`, `youtu.be/...`, `youtube.com/shorts/...` |
+| Instagram | `instagram.com/reel/...`, `instagram.com/reels/...`, `instagram.com/p/...` |
 
 ## Roadmap
 
-| Phase | Scope |
-|-------|-------|
-| 1a | YouTube → macOS Safari → Obsidian (this release) |
-| 1b | Instagram Reels support |
-| 1c | Config polish, error handling, public v1.0 |
-| 2 | iOS share sheet via Shortcuts + webhook |
-| 3 | Articles, podcasts, tweets |
+| Phase | Scope | Status |
+|---|---|---|
+| 1a | YouTube → macOS Safari → Obsidian | ✅ Done |
+| 1b | Instagram Reels support | ✅ Done |
+| 1c | Polish, README, public v1.0 | ✅ Done |
+| 2 | iOS share sheet via Shortcuts + webhook | Planned |
+| 3 | Articles, podcasts, tweets | Planned |
 
 ## License
 
