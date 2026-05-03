@@ -24,18 +24,18 @@ _YOUTUBE_RE = re.compile(
 class TranscriptResult:
     text: str
     language: str
-    method: str  # "youtube_api" | "whisper" | "assemblyai"
+    method: str  # "youtube_api" | "whisper"
 
 
-def get_transcript(url: str, platform: Platform) -> TranscriptResult:
+def get_transcript(url: str, platform: Platform, whisper_model: str = "base") -> TranscriptResult:
     if platform == Platform.YOUTUBE:
-        return _youtube_transcript(url)
+        return _youtube_transcript(url, whisper_model)
     if platform == Platform.INSTAGRAM_REEL:
-        return _reel_transcript(url)
+        return _whisper_transcript(url, whisper_model)
     raise ValueError(f"Unsupported platform: {platform}")
 
 
-def _youtube_transcript(url: str) -> TranscriptResult:
+def _youtube_transcript(url: str, whisper_model: str = "base") -> TranscriptResult:
     m = _YOUTUBE_RE.search(url)
     if not m:
         raise ValueError(f"Could not extract YouTube video ID from: {url}")
@@ -48,16 +48,15 @@ def _youtube_transcript(url: str) -> TranscriptResult:
         text = " ".join(seg.text for seg in fetched)
         return TranscriptResult(text=text, language="en", method="youtube_api")
 
-    except TranscriptsDisabled:
-        raise RuntimeError("Transcripts are disabled for this video.")
-    except NoTranscriptFound:
-        raise RuntimeError("No English transcript found for this video.")
+    except (TranscriptsDisabled, NoTranscriptFound) as exc:
+        logger.warning("YouTube transcript API failed (%s) — falling back to Whisper…", exc)
+        return _whisper_transcript(url, whisper_model)
 
 
-def _reel_transcript(url: str) -> TranscriptResult:
-    """Download Reel audio with yt-dlp then transcribe locally with Whisper."""
+def _whisper_transcript(url: str, model_name: str = "base") -> TranscriptResult:
+    """Download audio with yt-dlp then transcribe locally with Whisper."""
     try:
-        import whisper  # openai-whisper
+        import whisper
     except ImportError:
         raise RuntimeError(
             "openai-whisper is not installed. Run: pip install openai-whisper"
@@ -65,7 +64,7 @@ def _reel_transcript(url: str) -> TranscriptResult:
 
     with tempfile.TemporaryDirectory() as tmp:
         audio_path = os.path.join(tmp, "audio.%(ext)s")
-        logger.info("Downloading Reel audio via yt-dlp…")
+        logger.info("Downloading audio via yt-dlp…")
         venv_bin = Path(__file__).parent.parent / "venv" / "bin"
         yt_dlp = str(venv_bin / "yt-dlp")
         result = subprocess.run(
@@ -84,14 +83,13 @@ def _reel_transcript(url: str) -> TranscriptResult:
         if result.returncode != 0:
             raise RuntimeError(f"yt-dlp failed: {result.stderr.strip()}")
 
-        # Find the downloaded file (extension may differ)
         downloaded = [f for f in os.listdir(tmp) if f.startswith("audio.")]
         if not downloaded:
             raise RuntimeError("yt-dlp did not produce an audio file.")
         mp3_path = os.path.join(tmp, downloaded[0])
 
-        logger.info("Transcribing audio with Whisper…")
-        model = whisper.load_model("base")
+        logger.info("Transcribing audio with Whisper (model: %s)…", model_name)
+        model = whisper.load_model(model_name)
         result_w = model.transcribe(mp3_path, language="en")
         text = result_w["text"].strip()
         return TranscriptResult(text=text, language="en", method="whisper")

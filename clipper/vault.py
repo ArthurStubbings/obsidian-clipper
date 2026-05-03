@@ -1,7 +1,9 @@
 """Write the generated note to the Obsidian vault."""
 
+import glob
 import logging
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -27,8 +29,6 @@ def write_note(note: str, filename: str, vault_path: str, subfolder: str = "Sour
 
 def get_existing_titles(vault_path: str, subfolder: str = "Sources") -> list[str]:
     """Return the title frontmatter value from every .md file in the vault subfolder."""
-    import glob
-    import re
     vault = resolve_vault_path(vault_path)
     title_re = re.compile(r"^title:\s*(.+)$", re.MULTILINE)
     titles = []
@@ -44,11 +44,29 @@ def get_existing_titles(vault_path: str, subfolder: str = "Sources") -> list[str
     return sorted(titles)
 
 
+def get_existing_sources(vault_path: str, subfolder: str = "Sources") -> set[str]:
+    """Return the source frontmatter URLs from every .md file in the vault subfolder."""
+    vault = resolve_vault_path(vault_path)
+    source_re = re.compile(r"^source:\s*(.+)$", re.MULTILINE)
+    sources = set()
+    search_dir = vault / subfolder
+    for path in glob.glob(str(search_dir / "*.md")):
+        try:
+            text = Path(path).read_text(encoding="utf-8", errors="ignore")
+            m = source_re.search(text)
+            if m:
+                sources.add(m.group(1).strip().strip('"').strip("'"))
+        except OSError:
+            continue
+    return sources
+
+
 def send_notification(title: str, message: str) -> None:
     """Show a macOS notification using osascript."""
-    script = (
-        f'display notification "{message}" with title "{title}"'
-    )
+    def _esc(s: str) -> str:
+        return s.replace("\\", "\\\\").replace('"', '\\"')
+
+    script = f'display notification "{_esc(message)}" with title "{_esc(title)}"'
     try:
         subprocess.run(["osascript", "-e", script], timeout=5, check=True)
     except Exception as exc:

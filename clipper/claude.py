@@ -9,7 +9,7 @@ from clipper.safari import Platform
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
 _SYSTEM_PROMPT = """\
 You are an expert knowledge distiller. Your job is to convert video transcripts into \
@@ -194,10 +194,10 @@ _PROMPTS = {
 }
 
 
-def _classify(client: anthropic.Anthropic, transcript: str) -> str:
+def _classify(client: anthropic.Anthropic, transcript: str, model: str) -> str:
     """Return 'reference', 'tutorial', or 'essay'."""
     response = client.messages.create(
-        model=MODEL,
+        model=model,
         max_tokens=10,
         messages=[{
             "role": "user",
@@ -217,6 +217,7 @@ def generate_note(
     transcript: str,
     date: str,
     existing_titles: list[str] | None = None,
+    model: str = _DEFAULT_MODEL,
 ) -> str:
     """Classify the transcript, then generate a format-appropriate Obsidian note."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -226,31 +227,53 @@ def generate_note(
     client = anthropic.Anthropic(api_key=api_key)
 
     logger.info("Classifying video type…")
-    video_type = _classify(client, transcript)
+    video_type = _classify(client, transcript, model)
     logger.info("Video type: %s", video_type)
-
-    existing_block = ""
-    if existing_titles:
-        titles_list = "\n".join(f"- {t}" for t in existing_titles)
-        existing_block = (
-            f"\n\nEXISTING VAULT NOTES (only suggest [[wikilinks]] to notes from this list):\n{titles_list}"
-        )
 
     prompt = _PROMPTS[video_type].format(
         url=url,
         platform=platform.value,
         transcript=transcript,
         date=date,
-    ) + existing_block
+    )
 
-    logger.info("Generating note with Claude (%s)…", MODEL)
+    # Build user content: existing titles block is cached (semi-static across a session),
+    # followed by the variable prompt. System prompt is also marked for caching.
+    user_content: list[dict] = []
+    if existing_titles:
+        titles_list = "\n".join(f"- {t}" for t in existing_titles)
+        user_content.append({
+            "type": "text",
+            "text": (
+                "EXISTING VAULT NOTES (only suggest [[wikilinks]] to notes from this list):\n"
+                + titles_list
+            ),
+            "cache_control": {"type": "ephemeral"},
+        })
+    user_content.append({"type": "text", "text": prompt})
+
+    logger.info("Generating note with Claude (%s)…", model)
     message = client.messages.create(
-        model=MODEL,
+        model=model,
         max_tokens=4096,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
+        system=[{
+            "type": "text",
+            "text": _SYSTEM_PROMPT,
+            "cache_control": {"type": "ephemeral"},
+        }],
+        messages=[{"role": "user", "content": user_content}],
     )
 
     note = message.content[0].text.strip()
     logger.debug("Claude response:\n%s", note)
+
+    usage = message.usage
+    logger.info(
+        "Tokens — input: %d (cache_read: %d, cache_write: %d), output: %d",
+        usage.input_tokens,
+        getattr(usage, "cache_read_input_tokens", 0),
+        getattr(usage, "cache_creation_input_tokens", 0),
+        usage.output_tokens,
+    )
+
     return note

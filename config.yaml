@@ -5,5 +5,12 @@
 
 vault:
   # Replace YOUR_VAULT_NAME with your actual vault folder name
-  path: ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/YOUR_VAULT_NAME
+  path: ~/Documents/Obsidian/Clipper
   subfolder: Sources
+
+claude:
+  model: claude-sonnet-4-20250514
+
+whisper:
+  model: base  # Options: tiny, base, small, medium, large
+
