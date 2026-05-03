@@ -116,10 +116,11 @@ def main() -> None:
         help="Print the generated note to stdout without writing to the vault.",
     )
     parser.add_argument(
-        "--open",
-        action="store_true",
+        "--no-open",
+        action="store_false",
         dest="open_after",
-        help="Open the note in Obsidian immediately after saving.",
+        default=True,
+        help="Skip opening the note in Obsidian after saving.",
     )
     args = parser.parse_args()
 
